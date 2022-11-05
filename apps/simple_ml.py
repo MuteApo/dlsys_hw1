@@ -7,7 +7,7 @@ sys.path.append('python/')
 import needle as ndl
 
 
-def parse_mnist(image_filesname, label_filename):
+def parse_mnist(image_filename, label_filename):
     """ Read an images and labels file in MNIST format.  See this page:
     http://yann.lecun.com/exdb/mnist/ for a description of the file format.
 
@@ -17,24 +17,37 @@ def parse_mnist(image_filesname, label_filename):
 
     Returns:
         Tuple (X,y):
-            X (numpy.ndarray[np.float32]): 2D numpy array containing the loaded
-                data.  The dimensionality of the data should be
-                (num_examples x input_dim) where 'input_dim' is the full
-                dimension of the data, e.g., since MNIST images are 28x28, it
-                will be 784.  Values should be of type np.float32, and the data
-                should be normalized to have a minimum value of 0.0 and a
-                maximum value of 1.0.
+            X (numpy.ndarray[np.float32]): 2D numpy array containing the loaded 
+                data.  The dimensionality of the data should be 
+                (num_examples x input_dim) where 'input_dim' is the full 
+                dimension of the data, e.g., since MNIST images are 28x28, it 
+                will be 784.  Values should be of type np.float32, and the data 
+                should be normalized to have a minimum value of 0.0 and a 
+                maximum value of 1.0. The normalization should be applied uniformly
+                across the whole dataset, _not_ individual images.
 
-            y (numpy.ndarray[dypte=np.int8]): 1D numpy array containing the
-                labels of the examples.  Values should be of type np.int8 and
+            y (numpy.ndarray[dtype=np.uint8]): 1D numpy array containing the
+                labels of the examples.  Values should be of type np.uint8 and
                 for MNIST will contain the values 0-9.
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+
+    with gzip.open(image_filename, 'rb') as image_file:
+        _, image_num, _, _ = struct.unpack('>IIII', image_file.read(16))
+        images = np.frombuffer(image_file.read(), dtype=np.uint8)
+        images = images.reshape(image_num, 784).astype('float32')
+        image_max, image_min = np.max(images), np.min(images)
+        images = (images - image_min) / (image_max - image_min)
+
+    with gzip.open(label_filename, 'rb') as label_file:
+        _, label_num = struct.unpack('>II', label_file.read(8))
+        labels = np.frombuffer(label_file.read(), dtype=np.uint8)
+
+    assert image_num == label_num, 'image number mismatches label number'
+
+    return (images, labels)
 
 
-def softmax_loss(Z, y_one_hot):
+def softmax_loss(Z, y_one_hot) -> ndl.Tensor:
     """ Return softmax loss.  Note that for the purposes of this assignment,
     you don't need to worry about "nicely" scaling the numerical properties
     of the log-sum-exp computation, but can just compute this directly.
@@ -50,9 +63,11 @@ def softmax_loss(Z, y_one_hot):
     Returns:
         Average softmax loss over the sample. (ndl.Tensor[np.float32])
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+
+    lse = ndl.ops.log(ndl.ops.summation(ndl.ops.exp(Z), 1))
+    zy = ndl.ops.summation(Z * y_one_hot, 1)
+
+    return ndl.ops.summation(lse - zy) / Z.shape[0] 
 
 
 def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
@@ -79,16 +94,27 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
             W2: ndl.Tensor[np.float32]
     """
 
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    for _ in range(0, X.shape[0], batch):
+        X_batch = X[_:_ + batch]
+        y_batch = y[_:_ + batch]
+
+        Z = ndl.ops.matmul(ndl.ops.relu(ndl.ops.matmul(ndl.Tensor(X_batch), W1)), W2)
+        y_one_hot = np.zeros(Z.shape)
+        y_one_hot[np.arange(batch), y_batch] = 1
+        softmax_loss(Z, ndl.Tensor(y_one_hot)).backward()
+
+        W1 = (W1 - lr * W1.grad).detach()
+        W2 = (W2 - lr * W2.grad).detach()
+
+    return W1, W2
 
 
 ### CODE BELOW IS FOR ILLUSTRATION, YOU DO NOT NEED TO EDIT
 
-def loss_err(h,y):
+def loss_err(h, y):
     """ Helper function to compute both loss and error"""
+
     y_one_hot = np.zeros((y.shape[0], h.shape[-1]))
     y_one_hot[np.arange(y.size), y] = 1
     y_ = ndl.Tensor(y_one_hot)
-    return softmax_loss(h,y_).numpy(), np.mean(h.numpy().argmax(axis=1) != y)
+    return softmax_loss(h, y_).numpy(), np.mean(h.numpy().argmax(axis=1) != y)

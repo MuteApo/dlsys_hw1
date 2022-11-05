@@ -1,7 +1,6 @@
 """Core data structures."""
 import needle
-from typing import List, Optional, NamedTuple, Tuple, Union
-from collections import namedtuple
+from typing import List, Optional, Dict, Tuple, Union
 import numpy
 
 # needle version
@@ -33,9 +32,11 @@ class CPUDevice(Device):
     def enabled(self):
         return True
 
+
 def cpu():
     """Return cpu device"""
     return CPUDevice()
+
 
 def all_devices():
     """return a list of all available devices"""
@@ -387,6 +388,7 @@ def compute_gradient_of_variables(output_tensor, out_grad):
 
     Store the computed result in the grad field of each Variable.
     """
+
     # a map from node to a list of gradient contributions from each output node
     node_to_output_grads_list: Dict[Tensor, List[Tensor]] = {}
     # Special note on initializing gradient of
@@ -397,12 +399,17 @@ def compute_gradient_of_variables(output_tensor, out_grad):
     # Traverse graph in reverse topological order given the output_node that we are taking gradient wrt.
     reverse_topo_order = list(reversed(find_topo_sort([output_tensor])))
 
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+    for i in reverse_topo_order:
+        i.grad = array_api.sum(node_to_output_grads_list[i])
+        if not i.is_leaf():
+            grad = i.op.gradient_as_tuple(i.grad, i)
+            for k in range(len(i.inputs)):
+                if i.inputs[k] not in node_to_output_grads_list:
+                    node_to_output_grads_list[i.inputs[k]] = []
+                node_to_output_grads_list[i.inputs[k]].append(grad[k])
 
 
-def find_topo_sort(node_list: List[Value]) -> List[Value]:
+def find_topo_sort(node_list: List[Tensor]) -> List[Tensor]:
     """Given a list of nodes, return a topological sort list of nodes ending in them.
 
     A simple algorithm is to do a post-order DFS traversal on the given nodes,
@@ -410,16 +417,23 @@ def find_topo_sort(node_list: List[Value]) -> List[Value]:
     after all its predecessors are traversed due to post-order DFS, we get a topological
     sort.
     """
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+
+    visited = []
+    topo_order = []
+    for node in node_list:
+        if node not in visited:
+            topo_sort_dfs(node, visited, topo_order)
+    return topo_order
 
 
-def topo_sort_dfs(node, visited, topo_order):
+def topo_sort_dfs(node: Tensor, visited: List[Tensor], topo_order: List[Tensor]):
     """Post-order DFS"""
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
-    ### END YOUR SOLUTION
+
+    for next in node.inputs:
+        if next not in visited:
+            visited.append(next)
+            topo_sort_dfs(next, visited, topo_order)
+    topo_order.append(node)   
 
 
 ##############################
@@ -429,6 +443,7 @@ def topo_sort_dfs(node, visited, topo_order):
 
 def sum_node_list(node_list):
     """Custom sum function in order to avoid create redundant nodes in Python sum implementation."""
+
     from operator import add
     from functools import reduce
 
